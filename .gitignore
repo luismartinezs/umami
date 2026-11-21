@@ -63,3 +63,6 @@ yarn-error.log*
 
 # internal notes
 /soc2.md
+
+# appctl release artifacts
+/.release
