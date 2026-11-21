@@ -36,6 +36,9 @@ fi
 (
   cd "$src"
   pnpm install --frozen-lockfile
+  # packages/mcp depends on @umami/api-client by version range, not workspace:, so
+  # build:packages builds both in parallel and mcp can miss api-client's types.
+  pnpm --filter @umami/api-client build
   DATABASE_URL="postgresql://user:pass@localhost:5432/dummy" NEXT_TELEMETRY_DISABLED=1 DISABLE_TELEMETRY=1 \
     pnpm build:docker
 )
