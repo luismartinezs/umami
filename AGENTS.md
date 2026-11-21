@@ -32,7 +32,8 @@ Self-hosted on the deploy box at https://umami.appforgelabs.com (moved off Verce
 2026-11-21), through `~/dev/shared-infra` `appctl` with `ops/production.json`.
 
 - Deploy: commit, then `~/dev/shared-infra/appctl deploy ops/production.json`.
-  The release is the Next standalone server run by Bun (`ops/build-release`).
+  The release is the Next standalone server run by Node 22 (`ops/build-release`);
+  Bun 1.3.9 on the host cannot render Next 16.4 pages.
 - Schema: a release never migrates on start. When `prisma/migrations` gains a
   migration (usually from an upstream merge), run `ops/migrate --dry-run`, then
   `ops/migrate`, before deploying. It applies Prisma's SQL as `umami_user` and

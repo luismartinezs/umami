@@ -5,7 +5,7 @@
   "target": "deploy",
   "hostname": "umami.appforgelabs.com",
   "apiPort": 3044,
-  "runtime": "bun",
+  "runtime": "node",
   "siteMode": "backend",
   "readinessPath": "/api/heartbeat",
   "smokePaths": ["/login", "/script.js", "/api/heartbeat"],
