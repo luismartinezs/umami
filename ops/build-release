@@ -15,14 +15,15 @@ artifact=$2
 [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "release SHA must be 40 lowercase hex characters" >&2; exit 2; }
 
 repo=$PWD
-mkdir -p .release
-work=$(mktemp -d "$PWD/.release/build.XXXXXX")
+# Outside the repository, so Next's file tracing cannot reach the checkout's node_modules.
+work=$(mktemp -d "${TMPDIR:-/tmp}/umami-release.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 src="$work/src"
 out="$work/out"
 mkdir -p "$src" "$out"
 
 git archive "$sha" | tar -x -C "$src"
+printf 'nodeLinker: hoisted\nstrictDepBuilds: false\n' >> "$src/pnpm-workspace.yaml"
 # Same as the Docker build: CORS for the tracker and collect endpoint, and the CSP.
 cp docker/proxy.ts "$src/src/proxy.ts"
 # Reuse the local GeoLite database instead of downloading it on every build.
@@ -34,7 +35,7 @@ fi
 
 (
   cd "$src"
-  pnpm install --frozen-lockfile --config.node-linker=hoisted --config.strict-dep-builds=false
+  pnpm install --frozen-lockfile
   DATABASE_URL="postgresql://user:pass@localhost:5432/dummy" NEXT_TELEMETRY_DISABLED=1 DISABLE_TELEMETRY=1 \
     pnpm build:docker
 )
