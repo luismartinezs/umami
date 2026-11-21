@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Applies pending Prisma migrations (prisma/migrations) to the production database,
+# the way `prisma migrate deploy` would: each migration in one transaction, recorded
+# in _prisma_migrations with Prisma's checksum (sha256 of migration.sql).
+#
+# It runs psql inside the host's PostgreSQL container as the superuser, switched to
+# the application role, so tables stay owned by umami_user and the role's password
+# (root-only, /etc/umami/database.env) never leaves the host.
+#
+#   ops/migrate            apply pending migrations
+#   ops/migrate --dry-run  list them
+#
+# Run it before deploying a release whose MIGRATION is newer than the database's.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+host=hetzner.com-deploy
+container=shared-infra-postgres-1
+database=umami_prod
+role=umami_user
+dry_run=0
+[[ "${1:-}" == "--dry-run" ]] && dry_run=1
+
+psql_remote() {
+  ssh "$host" "docker exec -i $container psql -U postgres -d $database -v ON_ERROR_STOP=1 -q $*"
+}
+
+applied=$(psql_remote -At -c "'select migration_name from _prisma_migrations where finished_at is not null and rolled_back_at is null'")
+
+pending=0
+while IFS= read -r dir; do
+  name=$(basename "$dir")
+  grep -qxF "$name" <<<"$applied" && continue
+  pending=$((pending + 1))
+  if (( dry_run )); then
+    echo "pending: $name"
+    continue
+  fi
+  checksum=$(sha256sum "$dir/migration.sql" | cut -c1-64)
+  echo "applying $name"
+  {
+    echo "BEGIN;"
+    echo "SET LOCAL ROLE $role;"
+    cat "$dir/migration.sql"
+    echo
+    echo "INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, started_at, applied_steps_count)"
+    echo "VALUES (gen_random_uuid()::text, '$checksum', now(), '$name', now(), 1);"
+    echo "COMMIT;"
+  } | psql_remote
+done < <(find prisma/migrations -mindepth 1 -maxdepth 1 -type d | sort -V)
+
+echo "$pending pending migration(s)$( (( dry_run )) && echo ', none applied' )"
