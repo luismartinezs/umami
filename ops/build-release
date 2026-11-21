@@ -39,8 +39,12 @@ fi
   # packages/mcp depends on @umami/api-client by version range, not workspace:, so
   # build:packages builds both in parallel and mcp can miss api-client's types.
   pnpm --filter @umami/api-client build
-  DATABASE_URL="postgresql://user:pass@localhost:5432/dummy" NEXT_TELEMETRY_DISABLED=1 DISABLE_TELEMETRY=1 \
-    pnpm build:docker
+  export DATABASE_URL="postgresql://user:pass@localhost:5432/dummy" NEXT_TELEMETRY_DISABLED=1 DISABLE_TELEMETRY=1
+  # build:docker without its build:app step: the app is built with webpack, not Turbopack,
+  # because the deploy host's Bun (1.3.9) cannot load Turbopack's external Next runtime
+  # ("Expected CommonJS module to have a function wrapper"). Revisit when the host's Bun is >= 1.4.
+  pnpm exec npm-run-all build:db build:tracker build:recorder build:geo build:openapi build:packages
+  pnpm exec next build --webpack
 )
 
 cp -a "$src/.next/standalone/." "$out/"
