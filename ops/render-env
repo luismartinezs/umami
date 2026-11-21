@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Writes the application.env appctl installs as /etc/umami/application.env.
+# DATABASE_URL is not here: appctl supplies it in /etc/umami/database.env.
+set -euo pipefail
+[[ $# -eq 2 ]] || { echo "usage: ops/render-env <output> <env-file>" >&2; exit 2; }
+output=$1
+env_file=$2
+[[ -f "$env_file" ]] || { echo "missing $env_file" >&2; exit 1; }
+
+allowed='^(APP_SECRET|DISABLE_TELEMETRY|DISABLE_UPDATES|CLIENT_IP_HEADER|TRACKER_SCRIPT_NAME|COLLECT_API_ENDPOINT|CORS_MAX_AGE)='
+grep -E '^APP_SECRET=.{32,}' "$env_file" >/dev/null || { echo "APP_SECRET (32+ chars) is required in $env_file" >&2; exit 1; }
+if grep -E '^[A-Z_]+=' "$env_file" | grep -vE "$allowed" | grep -q .; then
+  echo "unexpected keys in $env_file:" >&2
+  grep -oE '^[A-Z_]+=' "$env_file" | grep -vE "$allowed" >&2
+  exit 1
+fi
+umask 077
+grep -E "$allowed" "$env_file" > "$output"

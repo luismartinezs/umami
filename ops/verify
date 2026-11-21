@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# appctl verify hook: the unit tests.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+# Upstream tests assume UTC (two date tests fail in other zones).
+TZ=UTC pnpm exec vitest run --reporter=dot

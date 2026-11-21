@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "app": "umami",
+  "displayName": "Umami",
+  "target": "deploy",
+  "hostname": "umami.appforgelabs.com",
+  "apiPort": 3044,
+  "runtime": "bun",
+  "siteMode": "backend",
+  "readinessPath": "/api/heartbeat",
+  "smokePaths": ["/login", "/script.js", "/api/heartbeat"],
+  "envFile": ".env.prod",
+  "memoryHighMb": 500,
+  "memoryMaxMb": 768,
+  "backup": {
+    "enabled": true,
+    "schedule": "03:51",
+    "retentionDays": 14
+  },
+  "commands": {
+    "verify": ["./ops/verify"],
+    "buildRelease": ["./ops/build-release", "{sha}", "{artifact}"],
+    "renderEnv": ["./ops/render-env", "{output}", "{envFile}"]
+  }
+}

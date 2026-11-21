@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Builds the appctl release archive (see ~/dev/shared-infra/README.md) for this commit.
+# The Next standalone server runs under Bun on the deploy host; api/index.js starts it.
+# Builds from a clean export of the commit with a hoisted install, because pnpm's
+# symlinked node_modules cannot go into a release (app-release rejects symlinks).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if [[ $# -ne 2 ]]; then
+  echo "usage: ops/build-release <40-character-git-sha> <artifact-path>" >&2
+  exit 2
+fi
+sha=$1
+artifact=$2
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "release SHA must be 40 lowercase hex characters" >&2; exit 2; }
+
+repo=$PWD
+mkdir -p .release
+work=$(mktemp -d "$PWD/.release/build.XXXXXX")
+trap 'rm -rf -- "$work"' EXIT
+src="$work/src"
+out="$work/out"
+mkdir -p "$src" "$out"
+
+git archive "$sha" | tar -x -C "$src"
+# Same as the Docker build: CORS for the tracker and collect endpoint, and the CSP.
+cp docker/proxy.ts "$src/src/proxy.ts"
+# Reuse the local GeoLite database instead of downloading it on every build.
+if [[ -f geo/GeoLite2-City.mmdb ]]; then
+  mkdir -p "$src/geo"
+  cp geo/GeoLite2-City.mmdb "$src/geo/"
+  export SKIP_BUILD_GEO=1
+fi
+
+(
+  cd "$src"
+  pnpm install --frozen-lockfile --config.node-linker=hoisted --config.strict-dep-builds=false
+  DATABASE_URL="postgresql://user:pass@localhost:5432/dummy" NEXT_TELEMETRY_DISABLED=1 DISABLE_TELEMETRY=1 \
+    pnpm build:docker
+)
+
+cp -a "$src/.next/standalone/." "$out/"
+mkdir -p "$out/.next"
+cp -a "$src/.next/static" "$out/.next/static"
+cp -a "$src/public" "$out/public"
+mkdir -p "$out/api"
+cp ops/runtime/index.js "$out/api/index.js"
+cp ops/runtime/migrate.js "$out/api/migrate.js"
+# appctl requires a drizzle/ directory; this app's migrations are Prisma's, carried
+# for inspection only (they are applied with ops/migrate, not on start).
+cp -a "$src/prisma/migrations" "$out/drizzle"
+
+if find "$out" -type l -print -quit | grep -q .; then
+  echo "release contains symbolic links" >&2
+  find "$out" -type l | head >&2
+  exit 1
+fi
+
+migration=$(find "$src/prisma/migrations" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)
+printf '%s\n' "$sha" > "$out/VERSION"
+printf '%s\n' "$migration" > "$out/MIGRATION"
+printf '{"application":"umami","commit":"%s","migration":"%s","builtAt":"%s"}\n' \
+  "$sha" "$migration" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$out/RELEASE.json"
+(
+  cd "$out"
+  find . -type f ! -name MANIFEST.sha256 -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256
+)
+chmod 755 "$out"
+tar -C "$out" -czf "$artifact" .
+cd "$repo"
+printf 'release artifact: %s\n' "$artifact"
