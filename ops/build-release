@@ -54,6 +54,14 @@ cp ops/runtime/migrate.js "$out/api/migrate.js"
 # for inspection only (they are applied with ops/migrate, not on start).
 cp -a "$src/prisma/migrations" "$out/drizzle"
 
+# Turbopack links external packages into .next/node_modules (pg-<hash> -> ../../node_modules/pg).
+# app-release rejects symlinks, so replace each with a copy of its target.
+while IFS= read -r -d '' link; do
+  target=$(readlink -f "$link")
+  rm "$link"
+  cp -a "$target" "$link"
+done < <(find "$out" -type l -print0)
+
 if find "$out" -type l -print -quit | grep -q .; then
   echo "release contains symbolic links" >&2
   find "$out" -type l | head >&2
